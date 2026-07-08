@@ -179,6 +179,21 @@ h2 {
   cursor: grabbing;
 }
 
+.tableRow.frustrationHigh,
+.tableRow.frustrationHigh:hover {
+  background: #ffe6e6;
+}
+
+.tableRow.frustrationMedium,
+.tableRow.frustrationMedium:hover {
+  background: #fff8d9;
+}
+
+.tableRow.frustrationLow,
+.tableRow.frustrationLow:hover {
+  background: #e8f8ea;
+}
+
 .gripHeader,
 .gripCell {
   width: 56px;

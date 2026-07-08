@@ -28,6 +28,16 @@ function getNewlyOrderedList(list, fromIndex, toIndex) {
   return moveItem(list, fromIndex, toIndex)
 }
 
+function getFrustrationRowClass(value) {
+  if (value > 0.6) {
+    return 'frustrationHigh'
+  }
+  if (value < 0.3) {
+    return 'frustrationLow'
+  }
+  return 'frustrationMedium'
+}
+
 function SummaryPage({ items, visibleHeaders, result, status, onBack, onStartNew }) {
   return (
     <main className="app">
@@ -47,8 +57,8 @@ function SummaryPage({ items, visibleHeaders, result, status, onBack, onStartNew
                     <thead>
                       <tr>
                         <th className="rankHeader">#</th>
-                        <th>Hazard</th>
-                        <th>Score</th>
+                        <th>Hazard Scenario</th>
+                        <th>WHC</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -56,7 +66,7 @@ function SummaryPage({ items, visibleHeaders, result, status, onBack, onStartNew
                         <tr key={row.scenario_id} className="tableRow">
                           <td className="rankCell">{index + 1}</td>
                           <td className="rowCell">{row.hazard}</td>
-                          <td className="rowCell">{row.score.toFixed(3)}</td>
+                          <td className="rowCell">{Math.exp(Number(row.score)).toFixed(1)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -71,13 +81,16 @@ function SummaryPage({ items, visibleHeaders, result, status, onBack, onStartNew
                     <thead>
                       <tr>
                         <th className="rankHeader">#</th>
-                        <th>Hazard</th>
+                        <th>Hazard Scenario</th>
                         <th>Frustration</th>
                       </tr>
                     </thead>
                     <tbody>
                       {result.frustration_list.map((row, index) => (
-                        <tr key={row.scenario_id} className="tableRow">
+                        <tr
+                          key={row.scenario_id}
+                          className={`tableRow ${getFrustrationRowClass(Number(row.frustration))}`}
+                        >
                           <td className="rankCell">{index + 1}</td>
                           <td className="rowCell">{row.hazard}</td>
                           <td className="rowCell">{row.frustration.toFixed(3)}</td>
@@ -95,7 +108,7 @@ function SummaryPage({ items, visibleHeaders, result, status, onBack, onStartNew
                 <thead>
                   <tr>
                     <th>Label</th>
-                    <th>Score</th>
+                    <th>New Score</th>
                   </tr>
                 </thead>
                 <tbody>
