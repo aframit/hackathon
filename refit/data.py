@@ -8,15 +8,22 @@ A scenario is one hazard-scenario row. We keep:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from .scoring import FEATURES
+from .scoring import ENCODABLE, FEATURES
 
 DEFAULT_DUMP = Path(__file__).resolve().parent.parent / "data_dump"
+
+# canonical leaf-feature name -> raw label column in raw_risk_profiling.parquet.
+# Needed for parameters whose label->score encoding we want to fit.
+RAW_LABEL_COLUMNS: dict[str, str] = {
+    "distance_to_object": "DistToObj",
+    "interaction_with_critical_surfaces": "InteractionWithCritSurf",
+}
 
 # canonical leaf-feature name -> column in raw_risk_profiling.parquet.
 # These are exactly the leaf sub-scores WHC.py consumes (verified to reproduce
@@ -50,6 +57,8 @@ class ScenarioTable:
     features: np.ndarray       # (N, len(FEATURES)) float feature sub-scores
     groups: np.ndarray         # (N,) str group (process) per scenario
     labels: pd.DataFrame       # (N, ...) human-readable columns, aligned to ids
+    # param -> (N,) label index into ENCODABLE[param]["labels"], for fittable encodings
+    enc_label_idx: dict[str, np.ndarray] = field(default_factory=dict)
 
     def __len__(self) -> int:
         return len(self.ids)
@@ -66,6 +75,7 @@ class ScenarioTable:
             features=self.features[idx],
             groups=self.groups[idx],
             labels=self.labels.iloc[idx].reset_index(drop=True),
+            enc_label_idx={k: v[idx] for k, v in self.enc_label_idx.items()},
         )
 
     def in_group(self, group: str) -> list[str]:
@@ -119,6 +129,14 @@ def load_scenarios(dump: Path | str = DEFAULT_DUMP) -> ScenarioTable:
         }
     )
 
+    # Label index (into ENCODABLE[param]["labels"]) per scenario, for the params
+    # whose encoding we can fit. Unknown/missing labels map to -1.
+    enc_label_idx: dict[str, np.ndarray] = {}
+    for param, col in RAW_LABEL_COLUMNS.items():
+        order = {lab: i for i, lab in enumerate(ENCODABLE[param]["labels"])}
+        raw_labels = raw[col].astype(str).str.strip().str.lower()
+        enc_label_idx[param] = raw_labels.map(order).fillna(-1).astype(int).to_numpy()
+
     # Note: some RM modifier sub-scores are legitimately negative (e.g. barrier
     # 'isolator' = -0.2), so we keep raw values; WHC's structure stays positive.
     return ScenarioTable(
@@ -126,4 +144,5 @@ def load_scenarios(dump: Path | str = DEFAULT_DUMP) -> ScenarioTable:
         features=feats.to_numpy(dtype=float),
         groups=raw["ProcessName"].astype(str).to_numpy(),
         labels=labels,
+        enc_label_idx=enc_label_idx,
     )

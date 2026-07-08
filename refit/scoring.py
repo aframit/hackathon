@@ -63,6 +63,35 @@ CONSTANTS: dict[str, list | float] = {
     "rm_sev_base": 1.0,
     "h_sev_base": 0.5,
 }
+WEIGHT_KEYS = list(CONSTANTS)
+
+# --- learnable label encodings ------------------------------------------------
+# A parameter's categorical labels map to numeric sub-scores. Listing a parameter
+# here makes those per-label scores fittable ("enc:<param>" in the params dict),
+# e.g. to search for new binnings. Values below are the verified WHC.SCORE_MAPS.
+# Encodings are free (can be negative), unlike the softplus-positive weights.
+ENCODABLE: dict[str, dict] = {
+    "distance_to_object": {
+        "col": FEATURES.index("distance_to_object"),
+        "labels": ["near - no obstacles", "near - with obstacles",
+                   "far - no obstacles", "far - with obstacles"],
+        "init": [1.0, 5.0, 5.0, 10.0],
+    },
+    "interaction_with_critical_surfaces": {
+        "col": FEATURES.index("interaction_with_critical_surfaces"),
+        "labels": ["usage of sterile tool", "not applicable",
+                   "using isolator/rabs gloves", "using gloved hand",
+                   "usage of non-sterile tool"],
+        "init": [-0.1, 0.0, 0.1, 0.2, 0.2],
+    },
+}
+
+
+def encoding_key(param: str) -> str:
+    return f"enc:{param}"
+
+
+ENCODING_KEYS = [encoding_key(p) for p in ENCODABLE]
 
 
 def _sp(x):
@@ -75,13 +104,40 @@ def _inv_sp(y):
 
 
 def init_params() -> dict:
-    """Raw (pre-softplus) params whose effective values are the WHC constants."""
-    return {k: _inv_sp(jnp.asarray(v)) for k, v in CONSTANTS.items()}
+    """Params whose effective values are the verified WHC constants.
+
+    Weights are stored pre-softplus; encodings ("enc:<param>") are stored as-is.
+    At init the encodings equal the precomputed feature scores, so ``score`` is
+    unchanged until an encoding is chosen for fitting.
+    """
+    params = {k: _inv_sp(jnp.asarray(v)) for k, v in CONSTANTS.items()}
+    for param, spec in ENCODABLE.items():
+        params[encoding_key(param)] = jnp.asarray(spec["init"], dtype=jnp.float32)
+    return params
 
 
 def effective_weights(params: dict) -> dict:
-    """The interpretable, post-softplus weights (what the calculation uses)."""
-    return {k: _sp(v) for k, v in params.items()}
+    """The interpretable weights (softplus applied) and encodings (as-is)."""
+    return {
+        k: (v if k.startswith("enc:") else _sp(v)) for k, v in params.items()
+    }
+
+
+def assemble_features(x0, params: dict, enc_label_idx: dict) -> jnp.ndarray:
+    """Feature matrix with encoded columns replaced by their learnable scores.
+
+    ``x0``            : (N, N_FEATURES) precomputed sub-scores.
+    ``enc_label_idx`` : param -> (N,) label index into ENCODABLE[param]["labels"].
+    Only parameters whose "enc:<param>" key is present in ``params`` are overridden
+    (so freezing an encoding leaves its precomputed column untouched).
+    """
+    x = jnp.asarray(x0, dtype=jnp.float32)
+    for param, spec in ENCODABLE.items():
+        key = encoding_key(param)
+        if key in params and param in enc_label_idx:
+            col_values = params[key][jnp.asarray(enc_label_idx[param])]
+            x = x.at[:, spec["col"]].set(col_values)
+    return x
 
 
 def wh_lik(params: dict, x: jnp.ndarray) -> jnp.ndarray:
@@ -107,7 +163,11 @@ def whc(params: dict, x: jnp.ndarray) -> jnp.ndarray:
 def score(params: dict, x: jnp.ndarray) -> jnp.ndarray:
     """Ranking key experts sort by: ln(WHC) (== the LN column).
 
-    Computed as ln(WH_Lik) + ln(WH_Sev); both branches are strictly positive by
-    construction, so the log is always defined during fitting.
+    Computed as ln(WH_Lik) + ln(WH_Sev). Weights are positive by construction;
+    encodings are free, so both branches are floored at a tiny positive value to
+    keep the log defined while an encoding is being fit.
     """
-    return jnp.log(wh_lik(params, x)) + jnp.log(wh_sev(params, x))
+    eps = 1e-6
+    return jnp.log(jnp.clip(wh_lik(params, x), eps, None)) + jnp.log(
+        jnp.clip(wh_sev(params, x), eps, None)
+    )

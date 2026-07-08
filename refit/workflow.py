@@ -37,7 +37,10 @@ class RefitWorkflow:
 
     # --- scoring -------------------------------------------------------------
     def scores(self) -> np.ndarray:
-        return np.asarray(scoring.score(self.params, self.scenarios.features))
+        x = scoring.assemble_features(
+            self.scenarios.features, self.params, self.scenarios.enc_label_idx
+        )
+        return np.asarray(scoring.score(self.params, x))
 
     def current_ranking(self, group: str | None = None) -> list[dict]:
         """All scenarios (optionally within a group) sorted most -> least critical."""
@@ -79,7 +82,57 @@ class RefitWorkflow:
         else:
             raise ValueError(f"Unknown strategy: {strategy!r}")
         sub = self.scenarios.subset(list(chosen))
-        s = np.asarray(scoring.score(self.params, sub.features))
+        xs = scoring.assemble_features(sub.features, self.params, sub.enc_label_idx)
+        s = np.asarray(scoring.score(self.params, xs))
+        return [
+            {"scenario_id": sub.ids[i], "hazard": sub.labels.iloc[i]["hazard"],
+             "current_score": float(s[i])}
+            for i in range(len(sub))
+        ]
+
+    def serve_contrast(
+        self, param: str, n: int = 10, group: str | None = None,
+        seed: int | None = None, pool_factor: int = 8,
+    ) -> list[dict]:
+        """Pick scenarios that isolate ``param``: similar in every other feature
+        but spanning different labels of ``param``.
+
+        Ordering such a subset makes the returned ranking informative about that
+        one parameter (rather than being dominated by everything else), which is
+        what you want when studying/re-binning a single parameter.
+        """
+        col = scoring.ENCODABLE[param]["col"]
+        ids = np.array(self.scenarios.in_group(group)) if group else self.scenarios.ids
+        rows = self.scenarios.index_of(list(ids))
+        label_idx = self.scenarios.enc_label_idx[param][rows]
+
+        # z-scored features excluding the target column -> "context" similarity
+        other = np.delete(self.scenarios.features[rows], col, axis=1)
+        std = other.std(0)
+        std[std == 0] = 1.0
+        other = (other - other.mean(0)) / std
+
+        rng = np.random.default_rng(seed)
+        anchor = rng.integers(len(rows))
+        nearest = np.argsort(np.linalg.norm(other - other[anchor], axis=1))
+        pool = nearest[: min(len(nearest), n * pool_factor)]
+
+        # round-robin across labels (nearest first) so the subset spans labels
+        from collections import defaultdict
+        by_label: dict[int, list[int]] = defaultdict(list)
+        for i in pool:
+            by_label[int(label_idx[i])].append(i)
+        chosen: list[int] = []
+        while len(chosen) < n and any(by_label.values()):
+            for lab in list(by_label):
+                if by_label[lab]:
+                    chosen.append(by_label[lab].pop(0))
+                    if len(chosen) >= n:
+                        break
+        chosen_ids = list(ids[chosen])
+        sub = self.scenarios.subset(chosen_ids)
+        xs = scoring.assemble_features(sub.features, self.params, sub.enc_label_idx)
+        s = np.asarray(scoring.score(self.params, xs))
         return [
             {"scenario_id": sub.ids[i], "hazard": sub.labels.iloc[i]["hazard"],
              "current_score": float(s[i])}
@@ -95,20 +148,56 @@ class RefitWorkflow:
         self.store.add(Ordering(ordered_ids=list(ordered_ids), group=group, meta=meta))
 
     # --- regroup + refit -----------------------------------------------------
-    def refit(self, *, adjacent_only: bool = False, warm_start: bool = True, **fit_kwargs) -> FitResult:
-        """Regroup every stored ordering into one pool and re-fit the weights."""
+    def refit(
+        self,
+        *,
+        trainable: list[str] | None = None,
+        adjacent_only: bool = False,
+        warm_start: bool = True,
+        **fit_kwargs,
+    ) -> FitResult:
+        """Regroup every stored ordering into one pool and re-fit the parameters.
+
+        ``trainable`` selects which parameters to move (default: all combination
+        weights). Focus on one thing with e.g. ["enc:distance_to_object"], or fit
+        everything with scoring.WEIGHT_KEYS + scoring.ENCODING_KEYS.
+        """
         pool = self.store.regroup(adjacent_only=adjacent_only)
         result = refit(
             self.scenarios.features,
             self.id_to_row,
             pool.net(),
+            enc_label_idx=self.scenarios.enc_label_idx,
+            trainable=trainable,
             init=self.params if warm_start else None,
-            prior=scoring.init_params(),  # anchor to the known WHC constants
+            prior=scoring.init_params(),  # anchor to the known WHC values
             **fit_kwargs,
         )
         self.params = result.params
         self._save_weights()
         return result
+
+    # --- readouts ------------------------------------------------------------
+    def effective_encoding(self, param: str) -> dict:
+        """Current label -> score map for a fittable parameter."""
+        vec = np.asarray(self.params[scoring.encoding_key(param)])
+        return dict(zip(scoring.ENCODABLE[param]["labels"], vec.tolist()))
+
+    def worst_offenders(self, result: FitResult, n: int = 10) -> list[dict]:
+        """Scenarios the fitted model most disagrees with the orderings on."""
+        order = np.argsort(-result.frustration)
+        out = []
+        for i in order:
+            if result.involvement[i] <= 0:
+                continue
+            out.append({
+                "scenario_id": self.scenarios.ids[i],
+                "hazard": self.scenarios.labels.iloc[i]["hazard"],
+                "frustration": float(result.frustration[i]),
+            })
+            if len(out) >= n:
+                break
+        return out
 
     # --- persistence ---------------------------------------------------------
     def _save_weights(self) -> None:
