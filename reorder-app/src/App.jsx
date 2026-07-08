@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react'
-import Papa from 'papaparse'
 
 const API_URL = 'http://localhost:8000'
 const SAMPLE_SIZE = 10
@@ -34,6 +33,7 @@ export default function App() {
   const [items, setItems] = useState([])
   const [dragIndex, setDragIndex] = useState(null)
   const [status, setStatus] = useState('Loading scenarios...')
+  const [result, setResult] = useState(null)
 
   const fetchScenarios = useCallback(async () => {
     setStatus('Loading scenarios...')
@@ -80,30 +80,36 @@ export default function App() {
     fetchScenarios()
   }
 
-  const handleDone = () => {
+  // On "Done" we send the ordering (top row = most critical) to the backend,
+  // which re-fits the studied parameter and returns the re-ranked + frustration
+  // lists plus the fitted encoding.
+  const handleDone = async () => {
     if (items.length === 0) {
-      setStatus('No rows to export.')
+      setStatus('No rows to order.')
       return
     }
 
-    const headers = apiColumns.length > 0 ? apiColumns : Object.keys(items[0].row)
-    const data = items.map((item) => headers.map((header) => item.row[header] ?? ''))
-    const csv = Papa.unparse({
-      fields: headers,
-      data
-    })
+    const orderedIds = items.map((item) => item.row.scenario_id)
+    setStatus('Running model re-fit...')
+    try {
+      const response = await fetch(`${API_URL}/refit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ordered_ids: orderedIds })
+      })
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status} ${response.statusText}`)
+      }
 
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.setAttribute('download', 'risk_summary_reordered.csv')
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-
-    setStatus('Exported reordered data to risk_summary_reordered.csv')
+      const data = await response.json()
+      setResult(data)
+      setStatus(
+        `Re-fit done - ${data.n_orderings} orderings, ${data.n_pairs} constraints, ` +
+        `train acc ${data.train_accuracy.toFixed(3)}`
+      )
+    } catch (error) {
+      setStatus(`Re-fit failed: ${error.message}`)
+    }
   }
 
   const allHeaders = apiColumns.length > 0 ? apiColumns : Object.keys(items[0]?.row ?? {})
@@ -162,8 +168,38 @@ export default function App() {
           </table>
         </div>
 
-        {/* <h2>Newly Ordered List</h2> */}
-        {/* <pre className="output">{JSON.stringify(items.map((item) => item.row), null, 2)}</pre> */}
+        {/* Minimal results view - placeholder for the next-page display.
+            The re-fit response is in `result`. */}
+        {result && (
+          <div className="results">
+            <h2>Re-fit results ({result.param})</h2>
+
+            <h3>Fitted encoding (label → score)</h3>
+            <ul>
+              {Object.entries(result.encoding).map(([label, score]) => (
+                <li key={label}>{label}: {Number(score).toFixed(3)}</li>
+              ))}
+            </ul>
+
+            <h3>Re-ranked list (most critical first)</h3>
+            <ol>
+              {result.fitted_list.map((row) => (
+                <li key={row.scenario_id}>
+                  {row.hazard} — score {row.score.toFixed(3)}
+                </li>
+              ))}
+            </ol>
+
+            <h3>Most frustrated (model can’t match the ordering)</h3>
+            <ol>
+              {result.frustration_list.map((row) => (
+                <li key={row.scenario_id}>
+                  {row.hazard} — frustration {row.frustration.toFixed(3)}
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
       </section>
     </main>
   )

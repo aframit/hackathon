@@ -25,6 +25,23 @@ RAW_LABEL_COLUMNS: dict[str, str] = {
     "interaction_with_critical_surfaces": "InteractionWithCritSurf",
 }
 
+# display column (as shown in the reorder-app) -> raw label column.
+DISPLAY_LABEL_COLUMNS: dict[str, str] = {
+    "barrier": "BarrierSystem",
+    "critical surfaces": "NumberOfCriticalSurfaces",
+    "interaction": "InteractionWithCritSurf",
+    "visibility": "DegreeOfVisibility",
+    "distance to object": "DistToObj",
+    "size": "SizeObj",
+    "weight": "WeightObj",
+    "handling": "HandlingOfObj",
+}
+
+
+def _project_from_source(source: pd.Series) -> pd.Series:
+    """Short project label from the source filename (e.g. '..._ops4_...' -> 'ops4')."""
+    return source.astype(str).str.extract(r"_rp_([a-z0-9]+)_", expand=False).fillna(source)
+
 # canonical leaf-feature name -> column in raw_risk_profiling.parquet.
 # These are exactly the leaf sub-scores WHC.py consumes (verified to reproduce
 # the stored WHC column), in the same names as scoring.FEATURES.
@@ -47,6 +64,15 @@ RAW_SCORE_COLUMNS: dict[str, str] = {
     "gowning": "GowningStatusScr",
     "interaction_with_critical_surfaces": "InteractionWithCritSurfScr",
 }
+
+
+# columns exported for the reorder-app (scenario_id is hidden from its display,
+# but sent back on "Done" so the backend can map rows to scenarios exactly).
+APP_CSV_COLUMNS = [
+    "scenario_id", "project", "process", "hazard name", "barrier",
+    "critical surfaces", "interaction", "visibility", "distance to object",
+    "size", "weight", "handling",
+]
 
 
 @dataclass
@@ -115,7 +141,7 @@ def load_scenarios(dump: Path | str = DEFAULT_DUMP) -> ScenarioTable:
     labels = pd.DataFrame(
         {
             "scenario_id": scenario_id.values,
-            "project": _col("_source").values,
+            "project": _project_from_source(_col("_source")).values,
             "process": _col("ProcessName").values,
             "hazard name": _col("HazardScenario").values,
             "barrier": _col("BarrierSystem").values,
@@ -128,6 +154,8 @@ def load_scenarios(dump: Path | str = DEFAULT_DUMP) -> ScenarioTable:
             "handling": _col("HandlingOfObj").values,
         }
     )
+    # alias used across the code for short display
+    labels["hazard"] = labels["hazard name"]
 
     # Label index (into ENCODABLE[param]["labels"]) per scenario, for the params
     # whose encoding we can fit. Unknown/missing labels map to -1.
@@ -146,3 +174,12 @@ def load_scenarios(dump: Path | str = DEFAULT_DUMP) -> ScenarioTable:
         labels=labels,
         enc_label_idx=enc_label_idx,
     )
+
+
+def export_scenarios_csv(path: Path | str, dump: Path | str = DEFAULT_DUMP) -> int:
+    """Write the reorder-app's scenario CSV (scenario_id + display columns)."""
+    table = load_scenarios(dump)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    table.labels[APP_CSV_COLUMNS].to_csv(path, index=False)
+    return len(table)
