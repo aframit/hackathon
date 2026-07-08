@@ -1,7 +1,6 @@
 :root {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   color: #172b4d;
-  background: linear-gradient(135deg, #fef9f3 0%, #ecf5ff 100%);
 }
 
 * {
@@ -11,6 +10,11 @@
 body {
   margin: 0;
   min-height: 100vh;
+  background: linear-gradient(135deg, #0f5de2 0%, #18a8e8 52%, #5fd0c6 100%);
+}
+
+html {
+  background: linear-gradient(135deg, #0f5de2 0%, #18a8e8 52%, #5fd0c6 100%);
 }
 
 .app {
@@ -106,6 +110,28 @@ h2 {
 
 .doneButton:hover {
   background: #dff4e3;
+}
+
+.nextButton {
+  border: 1px solid #c4d4ec;
+  background: #172b4d;
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.nextButton:hover {
+  background: #1d3557;
+}
+
+.rankHeader,
+.rankCell {
+  width: 48px;
+  text-align: center;
+  font-weight: 700;
+  color: #2e5b87;
 }
 
 .tableWrap {

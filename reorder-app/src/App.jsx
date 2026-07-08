@@ -28,7 +28,56 @@ function getNewlyOrderedList(list, fromIndex, toIndex) {
   return moveItem(list, fromIndex, toIndex)
 }
 
+function SummaryPage({ items, visibleHeaders, result, status, onBack, onStartNew }) {
+  return (
+    <main className="app">
+      <section className="card">
+        <img src="/logo-innerspace.png" alt="Logo" className="headerLogo" />
+        <h1>Ranking Summary</h1>
+
+        {result && (
+          <div className="results">
+            <h2>Re-fit results ({result.param})</h2>
+
+            <h3>Fitted encoding (label → score)</h3>
+            <ul>
+              {Object.entries(result.encoding).map(([label, score]) => (
+                <li key={label}>{label}: {Number(score).toFixed(3)}</li>
+              ))}
+            </ul>
+
+            <h3>Re-ranked list (most critical first)</h3>
+            <ol>
+              {result.fitted_list.map((row) => (
+                <li key={row.scenario_id}>
+                  {row.hazard} — score {row.score.toFixed(3)}
+                </li>
+              ))}
+            </ol>
+
+            <h3>Most frustrated (model can’t match the ordering)</h3>
+            <ol>
+              {result.frustration_list.map((row) => (
+                <li key={row.scenario_id}>
+                  {row.hazard} — frustration {row.frustration.toFixed(3)}
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+
+        <div className="buttonRow">
+          <button className="nextButton" type="button" onClick={onStartNew}>
+            Start New Reordering
+          </button>
+        </div>
+      </section>
+    </main>
+  )
+}
+
 export default function App() {
+  const [page, setPage] = useState('reorder')
   const [apiColumns, setApiColumns] = useState([])
   const [items, setItems] = useState([])
   const [dragIndex, setDragIndex] = useState(null)
@@ -86,7 +135,7 @@ export default function App() {
   const handleDone = async () => {
     if (items.length === 0) {
       setStatus('No rows to order.')
-      return
+      return null
     }
 
     const orderedIds = items.map((item) => item.row.scenario_id)
@@ -107,13 +156,39 @@ export default function App() {
         `Re-fit done - ${data.n_orderings} orderings, ${data.n_pairs} constraints, ` +
         `train acc ${data.train_accuracy.toFixed(3)}`
       )
+      return data
     } catch (error) {
       setStatus(`Re-fit failed: ${error.message}`)
+      return null
+    }
+  }
+
+  const handleNextPage = async () => {
+    const data = await handleDone()
+    if (data) {
+      setPage('summary')
     }
   }
 
   const allHeaders = apiColumns.length > 0 ? apiColumns : Object.keys(items[0]?.row ?? {})
   const visibleHeaders = allHeaders.filter(h => VISIBLE_COLUMNS.includes(h.toLowerCase()))
+
+  if (page === 'summary') {
+    return (
+      <SummaryPage
+        items={items}
+        visibleHeaders={visibleHeaders}
+        result={result}
+        status={status}
+        onBack={() => setPage('reorder')}
+        onStartNew={() => {
+          setResult(null)
+          fetchScenarios()
+          setPage('reorder')
+        }}
+      />
+    )
+  }
 
   return (
     <main className="app">
@@ -126,8 +201,8 @@ export default function App() {
           <button className="refreshButton" type="button" onClick={handleGetNewData}>
             Get New Data
           </button>
-          <button className="doneButton" type="button" onClick={handleDone}>
-            Done
+          <button className="nextButton" type="button" onClick={handleNextPage}>
+            Done (Re-fit Model)
           </button>
         </div>
 
@@ -168,38 +243,6 @@ export default function App() {
           </table>
         </div>
 
-        {/* Minimal results view - placeholder for the next-page display.
-            The re-fit response is in `result`. */}
-        {result && (
-          <div className="results">
-            <h2>Re-fit results ({result.param})</h2>
-
-            <h3>Fitted encoding (label → score)</h3>
-            <ul>
-              {Object.entries(result.encoding).map(([label, score]) => (
-                <li key={label}>{label}: {Number(score).toFixed(3)}</li>
-              ))}
-            </ul>
-
-            <h3>Re-ranked list (most critical first)</h3>
-            <ol>
-              {result.fitted_list.map((row) => (
-                <li key={row.scenario_id}>
-                  {row.hazard} — score {row.score.toFixed(3)}
-                </li>
-              ))}
-            </ol>
-
-            <h3>Most frustrated (model can’t match the ordering)</h3>
-            <ol>
-              {result.frustration_list.map((row) => (
-                <li key={row.scenario_id}>
-                  {row.hazard} — frustration {row.frustration.toFixed(3)}
-                </li>
-              ))}
-            </ol>
-          </div>
-        )}
       </section>
     </main>
   )
