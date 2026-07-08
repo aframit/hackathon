@@ -205,6 +205,45 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.hazardScenarioCol {
+  background: #fff4cf;
+  font-weight: 600;
+}
+
+.confettiLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 4;
+}
+
+.confettiPiece {
+  position: absolute;
+  top: -20px;
+  width: 10px;
+  height: 16px;
+  border-radius: 2px;
+  opacity: 0.92;
+  animation-name: confettiFall;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
+  animation-fill-mode: both;
+}
+
+@keyframes confettiFall {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.95;
+  }
+  100% {
+    transform: translateY(105vh) rotate(680deg);
+    opacity: 0;
+  }
+}
+
 .resultsTopGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(280px, 1fr));

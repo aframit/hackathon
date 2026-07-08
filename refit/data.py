@@ -71,7 +71,7 @@ ENC_SCORE_COLUMNS: dict[str, str] = {
 # columns exported for the reorder-app (scenario_id is hidden from its display,
 # but sent back on "Done" so the backend can map rows to scenarios exactly).
 APP_CSV_COLUMNS = [
-    "scenario_id", "project", "process", "hazard name", "barrier",
+    "scenario_id", "project", "process", "hazard scenario", "barrier",
     "critical surfaces", "interaction", "visibility", "distance to object",
     "size", "weight", "handling",
 ]
@@ -145,7 +145,7 @@ def load_scenarios(dump: Path | str = DEFAULT_DUMP) -> ScenarioTable:
             "scenario_id": scenario_id.values,
             "project": _project_from_source(_col("_source")).values,
             "process": _col("ProcessName").values,
-            "hazard name": _col("HazardScenario").values,
+            "hazard scenario": _col("HazardScenario").values,
             "barrier": _col("BarrierSystem").values,
             "critical surfaces": _col("NumberOfCriticalSurfaces").values,
             "interaction": _col("InteractionWithCritSurf").values,
@@ -157,7 +157,7 @@ def load_scenarios(dump: Path | str = DEFAULT_DUMP) -> ScenarioTable:
         }
     )
     # alias used across the code for short display
-    labels["hazard"] = labels["hazard name"]
+    labels["hazard"] = labels["hazard scenario"]
 
     # Label/bin index per scenario for every fittable parameter. We map each
     # scenario to the encoding entry whose init score matches its precomputed

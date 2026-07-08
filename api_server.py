@@ -132,7 +132,7 @@ def refit(req: RefitRequest):
     items = [
         {
             "scenario_id": sid,
-            "hazard": labels.iloc[wf.id_to_row[sid]]["hazard name"],
+            "hazard": labels.iloc[wf.id_to_row[sid]]["hazard scenario"],
             "whc": float(whc[wf.id_to_row[sid]]),
             "frustration": float(result.frustration[wf.id_to_row[sid]]),
         }

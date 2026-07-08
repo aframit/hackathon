@@ -13,7 +13,7 @@ const CASE_OPTIONS = [
 const VISIBLE_COLUMNS = [
   'project',
   'process',
-  'hazard name',
+  'hazard scenario',
   'barrier',
   'critical surfaces',
   'interaction',
@@ -39,16 +39,58 @@ function getFrustrationRowClass(value) {
   if (value > 0.6) {
     return 'frustrationHigh'
   }
-  if (value < 0.3) {
+  if (value < 0.35) {
     return 'frustrationLow'
   }
   return 'frustrationMedium'
 }
 
-function SummaryPage({ items, visibleHeaders, result, status, onBack, onStartNew }) {
+function shouldShowConfetti(result) {
+  const rows = result?.frustration_list ?? []
+  return rows.length > 0 && rows.every((row) => Number(row.frustration) < 0.6)
+}
+
+function ConfettiBurst({ active }) {
+  if (!active) {
+    return null
+  }
+
+  const pieces = Array.from({ length: 36 }, (_, index) => {
+    const colors = ['#ff6b6b', '#ffd166', '#06d6a0', '#118ab2', '#ef476f', '#f7b801']
+    return {
+      id: index,
+      left: `${Math.random() * 100}%`,
+      delay: `${(index % 12) * 0.08}s`,
+      duration: `${2.8 + (index % 6) * 0.18}s`,
+      rotate: `${Math.random() * 360}deg`,
+      color: colors[index % colors.length]
+    }
+  })
+
+  return (
+    <div className="confettiLayer" aria-hidden="true">
+      {pieces.map((piece) => (
+        <span
+          key={piece.id}
+          className="confettiPiece"
+          style={{
+            left: piece.left,
+            animationDelay: piece.delay,
+            animationDuration: piece.duration,
+            backgroundColor: piece.color,
+            transform: `rotate(${piece.rotate})`
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
+function SummaryPage({ items, visibleHeaders, result, status, onBack, onStartNew, showConfetti }) {
   return (
     <main className="app">
       <section className="card">
+        <ConfettiBurst active={showConfetti} />
         <img src="/logo-innerspace.png" alt="Logo" className="headerLogo" />
         <h1>Ranking Summary</h1>
 
@@ -162,6 +204,7 @@ export default function App() {
   const [dragIndex, setDragIndex] = useState(null)
   const [status, setStatus] = useState('Loading scenarios...')
   const [result, setResult] = useState(null)
+  const [showConfetti, setShowConfetti] = useState(false)
   const [selectedCase, setSelectedCase] = useState(CASE_OPTIONS[0].value)
 
   const fetchScenarios = useCallback(async () => {
@@ -187,6 +230,14 @@ export default function App() {
   useEffect(() => {
     fetchScenarios()
   }, [fetchScenarios])
+
+  useEffect(() => {
+    if (!showConfetti) {
+      return
+    }
+    const timerId = setTimeout(() => setShowConfetti(false), 3600)
+    return () => clearTimeout(timerId)
+  }, [showConfetti])
 
   const handleDrop = (dropIndex) => {
     if (dragIndex === null || dragIndex === dropIndex) {
@@ -257,6 +308,7 @@ export default function App() {
   const handleNextPage = async () => {
     const data = await handleDone()
     if (data) {
+      setShowConfetti(shouldShowConfetti(data))
       setPage('summary')
     }
   }
@@ -272,8 +324,10 @@ export default function App() {
         result={result}
         status={status}
         onBack={() => setPage('reorder')}
+        showConfetti={showConfetti}
         onStartNew={() => {
           setResult(null)
+          setShowConfetti(false)
           setAllOrderedBatches([])
           fetchScenarios()
           setPage('reorder')
@@ -317,7 +371,12 @@ export default function App() {
                   Drag
                 </th>
                 {visibleHeaders.map((header) => (
-                  <th key={header}>{header}</th>
+                  <th
+                    key={header}
+                    className={header.toLowerCase() === 'hazard scenario' ? 'hazardScenarioCol' : ''}
+                  >
+                    {header}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -336,7 +395,10 @@ export default function App() {
                     ::
                   </td>
                   {visibleHeaders.map((header) => (
-                    <td key={`${item.id}-${header}`} className="rowCell">
+                    <td
+                      key={`${item.id}-${header}`}
+                      className={`rowCell ${header.toLowerCase() === 'hazard scenario' ? 'hazardScenarioCol' : ''}`}
+                    >
                       {String(item.row[header] ?? '')}
                     </td>
                   ))}
