@@ -39,30 +39,75 @@ function SummaryPage({ items, visibleHeaders, result, status, onBack, onStartNew
           <div className="results">
             <h2>Re-fit results ({result.param})</h2>
 
+            <div className="resultsTopGrid">
+              <div className="resultPanel">
+                <h3>Re-ranked list (most critical first)</h3>
+                <div className="tableWrap resultTableWrap" aria-label="Re-ranked list table">
+                  <table className="dataTable resultDataTable">
+                    <thead>
+                      <tr>
+                        <th className="rankHeader">#</th>
+                        <th>Hazard</th>
+                        <th>Score</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.fitted_list.map((row, index) => (
+                        <tr key={row.scenario_id} className="tableRow">
+                          <td className="rankCell">{index + 1}</td>
+                          <td className="rowCell">{row.hazard}</td>
+                          <td className="rowCell">{row.score.toFixed(3)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="resultPanel">
+                <h3>Most frustrated (model can’t match ordering)</h3>
+                <div className="tableWrap resultTableWrap" aria-label="Most frustrated table">
+                  <table className="dataTable resultDataTable">
+                    <thead>
+                      <tr>
+                        <th className="rankHeader">#</th>
+                        <th>Hazard</th>
+                        <th>Frustration</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.frustration_list.map((row, index) => (
+                        <tr key={row.scenario_id} className="tableRow">
+                          <td className="rankCell">{index + 1}</td>
+                          <td className="rowCell">{row.hazard}</td>
+                          <td className="rowCell">{row.frustration.toFixed(3)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
             <h3>Fitted encoding (label → score)</h3>
-            <ul>
-              {Object.entries(result.encoding).map(([label, score]) => (
-                <li key={label}>{label}: {Number(score).toFixed(3)}</li>
-              ))}
-            </ul>
-
-            <h3>Re-ranked list (most critical first)</h3>
-            <ol>
-              {result.fitted_list.map((row) => (
-                <li key={row.scenario_id}>
-                  {row.hazard} — score {row.score.toFixed(3)}
-                </li>
-              ))}
-            </ol>
-
-            <h3>Most frustrated (model can’t match the ordering)</h3>
-            <ol>
-              {result.frustration_list.map((row) => (
-                <li key={row.scenario_id}>
-                  {row.hazard} — frustration {row.frustration.toFixed(3)}
-                </li>
-              ))}
-            </ol>
+            <div className="tableWrap resultTableWrap" aria-label="Fitted encoding table">
+              <table className="dataTable resultDataTable">
+                <thead>
+                  <tr>
+                    <th>Label</th>
+                    <th>Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(result.encoding).map(([label, score]) => (
+                    <tr key={label} className="tableRow">
+                      <td className="rowCell">{label}</td>
+                      <td className="rowCell">{Number(score).toFixed(3)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
