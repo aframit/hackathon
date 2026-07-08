@@ -42,6 +42,13 @@ class RefitWorkflow:
         )
         return np.asarray(scoring.score(self.params, x))
 
+    def whc_scores(self) -> np.ndarray:
+        """Raw WHC per scenario (the ranking score is ln(WHC); this is WHC itself)."""
+        x = scoring.assemble_features(
+            self.scenarios.features, self.params, self.scenarios.enc_label_idx
+        )
+        return np.asarray(scoring.whc(self.params, x))
+
     def current_ranking(self, group: str | None = None) -> list[dict]:
         """All scenarios (optionally within a group) sorted most -> least critical."""
         s = self.scores()

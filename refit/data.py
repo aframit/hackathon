@@ -18,13 +18,6 @@ from .scoring import ENCODABLE, FEATURES
 
 DEFAULT_DUMP = Path(__file__).resolve().parent.parent / "data_dump"
 
-# canonical leaf-feature name -> raw label column in raw_risk_profiling.parquet.
-# Needed for parameters whose label->score encoding we want to fit.
-RAW_LABEL_COLUMNS: dict[str, str] = {
-    "distance_to_object": "DistToObj",
-    "interaction_with_critical_surfaces": "InteractionWithCritSurf",
-}
-
 # display column (as shown in the reorder-app) -> raw label column.
 DISPLAY_LABEL_COLUMNS: dict[str, str] = {
     "barrier": "BarrierSystem",
@@ -63,6 +56,15 @@ RAW_SCORE_COLUMNS: dict[str, str] = {
     "barrier_system": "BarrierSystemScr",
     "gowning": "GowningStatusScr",
     "interaction_with_critical_surfaces": "InteractionWithCritSurfScr",
+}
+
+# score column per fittable parameter (scoring.ENCODABLE). Same as the feature
+# score columns, plus the three object sub-scores that compose complexity.
+ENC_SCORE_COLUMNS: dict[str, str] = {
+    **RAW_SCORE_COLUMNS,
+    "weight_object": "WeightObjScr",
+    "size_object": "SizeObjScr",
+    "handling_object": "HandlingOfObjScr",
 }
 
 
@@ -157,13 +159,15 @@ def load_scenarios(dump: Path | str = DEFAULT_DUMP) -> ScenarioTable:
     # alias used across the code for short display
     labels["hazard"] = labels["hazard name"]
 
-    # Label index (into ENCODABLE[param]["labels"]) per scenario, for the params
-    # whose encoding we can fit. Unknown/missing labels map to -1.
+    # Label/bin index per scenario for every fittable parameter. We map each
+    # scenario to the encoding entry whose init score matches its precomputed
+    # sub-score (argmin). This is uniform across parameters and reproduces the
+    # WHC column exactly at init (scores come straight from the same score maps).
     enc_label_idx: dict[str, np.ndarray] = {}
-    for param, col in RAW_LABEL_COLUMNS.items():
-        order = {lab: i for i, lab in enumerate(ENCODABLE[param]["labels"])}
-        raw_labels = raw[col].astype(str).str.strip().str.lower()
-        enc_label_idx[param] = raw_labels.map(order).fillna(-1).astype(int).to_numpy()
+    for param in ENCODABLE:
+        init = np.asarray(ENCODABLE[param]["init"], dtype=float)
+        score = pd.to_numeric(raw[ENC_SCORE_COLUMNS[param]], errors="coerce").to_numpy(dtype=float)
+        enc_label_idx[param] = np.abs(score[:, None] - init[None, :]).argmin(axis=1)
 
     # Note: some RM modifier sub-scores are legitimately negative (e.g. barrier
     # 'isolator' = -0.2), so we keep raw values; WHC's structure stays positive.

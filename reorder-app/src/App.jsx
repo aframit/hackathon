@@ -3,6 +3,13 @@ import { useCallback, useEffect, useState } from 'react'
 const API_URL = 'http://localhost:8000'
 const SAMPLE_SIZE = 10
 
+// The parameter groupings the re-fit can target. Value must match the backend CASES.
+const CASE_OPTIONS = [
+  { value: 'interaction_with_critical_surfaces', label: 'Interaction with critical surfaces' },
+  { value: 'distance_to_object', label: 'Distance to object (integer bins)' },
+  { value: 'all', label: '🎢 All parameters (everything at once)' }
+]
+
 const VISIBLE_COLUMNS = [
   'project',
   'process',
@@ -47,7 +54,7 @@ function SummaryPage({ items, visibleHeaders, result, status, onBack, onStartNew
 
         {result && (
           <div className="results">
-            <h2>Re-fit results ({result.param})</h2>
+            <h2>Re-fit results ({result.case})</h2>
 
             <div className="resultsTopGrid">
               <div className="resultPanel">
@@ -66,7 +73,7 @@ function SummaryPage({ items, visibleHeaders, result, status, onBack, onStartNew
                         <tr key={row.scenario_id} className="tableRow">
                           <td className="rankCell">{index + 1}</td>
                           <td className="rowCell">{row.hazard}</td>
-                          <td className="rowCell">{Math.exp(Number(row.score)).toFixed(1)}</td>
+                          <td className="rowCell">{Number(row.whc).toFixed(1)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -102,25 +109,38 @@ function SummaryPage({ items, visibleHeaders, result, status, onBack, onStartNew
               </div>
             </div>
 
-            <h3>Fitted encoding (label → score)</h3>
-            <div className="tableWrap resultTableWrap" aria-label="Fitted encoding table">
-              <table className="dataTable resultDataTable">
-                <thead>
-                  <tr>
-                    <th>Label</th>
-                    <th>New Score</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(result.encoding).map(([label, score]) => (
-                    <tr key={label} className="tableRow">
-                      <td className="rowCell">{label}</td>
-                      <td className="rowCell">{Number(score).toFixed(3)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {Object.entries(result.encodings ?? {}).map(([param, mapping]) => {
+              const isDistance = param === 'distance_to_object'
+              return (
+                <div key={param} className="encodingBlock">
+                  <h3>
+                    {isDistance
+                      ? 'distance_to_object — 10 bin scores'
+                      : `Fitted encoding — ${param} (label → new score)`}
+                  </h3>
+                  <div className="tableWrap resultTableWrap" aria-label={`${param} encoding table`}>
+                    <table className="dataTable resultDataTable">
+                      <thead>
+                        <tr>
+                          {!isDistance && <th>Label</th>}
+                          <th>New Score</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(mapping).map(([label, score]) => (
+                          <tr key={label} className="tableRow">
+                            {!isDistance && <td className="rowCell">{label}</td>}
+                            <td className="rowCell">
+                              {isDistance ? Math.round(Number(score)) : Number(score).toFixed(3)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
 
@@ -141,6 +161,7 @@ export default function App() {
   const [dragIndex, setDragIndex] = useState(null)
   const [status, setStatus] = useState('Loading scenarios...')
   const [result, setResult] = useState(null)
+  const [selectedCase, setSelectedCase] = useState(CASE_OPTIONS[0].value)
 
   const fetchScenarios = useCallback(async () => {
     setStatus('Loading scenarios...')
@@ -202,7 +223,7 @@ export default function App() {
       const response = await fetch(`${API_URL}/refit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ordered_ids: orderedIds })
+        body: JSON.stringify({ ordered_ids: orderedIds, case: selectedCase })
       })
       if (!response.ok) {
         throw new Error(`API error: ${response.status} ${response.statusText}`)
@@ -256,6 +277,16 @@ export default function App() {
         <p className="hint">Showing 10 random scenarios from the dataset.</p>
         <p className="statusText">{status}</p>
         <div className="buttonRow">
+          <label className="caseSelect">
+            Re-fit:{' '}
+            <select value={selectedCase} onChange={(event) => setSelectedCase(event.target.value)}>
+              {CASE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <button className="refreshButton" type="button" onClick={handleGetNewData}>
             Get New Data
           </button>
@@ -300,7 +331,6 @@ export default function App() {
             </tbody>
           </table>
         </div>
-
       </section>
     </main>
   )
