@@ -99,11 +99,23 @@ def load_scenarios(dump: Path | str = DEFAULT_DUMP) -> ScenarioTable:
         + raw.groupby(key_cols).cumcount().astype(str)  # disambiguate exact dups
     )
 
+    def _col(name: str) -> pd.Series:
+        return raw.get(name, pd.Series([""] * len(raw))).astype(str)
+
     labels = pd.DataFrame(
         {
             "scenario_id": scenario_id.values,
-            "process": raw["ProcessName"].astype(str).values,
-            "hazard": raw.get("HazardScenario", pd.Series([""] * len(raw))).astype(str).values,
+            "project": _col("_source").values,
+            "process": _col("ProcessName").values,
+            "hazard name": _col("HazardScenario").values,
+            "barrier": _col("BarrierSystem").values,
+            "critical surfaces": _col("NumberOfCriticalSurfaces").values,
+            "interaction": _col("InteractionWithCritSurf").values,
+            "visibility": _col("DegreeOfVisibility").values,
+            "distance to object": _col("DistToObj").values,
+            "size": _col("SizeObj").values,
+            "weight": _col("WeightObj").values,
+            "handling": _col("HandlingOfObj").values,
         }
     )
 
