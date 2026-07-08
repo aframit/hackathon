@@ -158,6 +158,7 @@ export default function App() {
   const [page, setPage] = useState('reorder')
   const [apiColumns, setApiColumns] = useState([])
   const [items, setItems] = useState([])
+  const [allOrderedBatches, setAllOrderedBatches] = useState([])
   const [dragIndex, setDragIndex] = useState(null)
   const [status, setStatus] = useState('Loading scenarios...')
   const [result, setResult] = useState(null)
@@ -205,6 +206,10 @@ export default function App() {
   }
 
   const handleGetNewData = () => {
+    if (items.length > 0) {
+      setAllOrderedBatches((prev) => [...prev, items])
+      setStatus(`Saved batch ${allOrderedBatches.length + 1}. Loading next 10 scenarios...`)
+    }
     fetchScenarios()
   }
 
@@ -212,18 +217,25 @@ export default function App() {
   // which re-fits the studied parameter and returns the re-ranked + frustration
   // lists plus the fitted encoding.
   const handleDone = async () => {
-    if (items.length === 0) {
+    const allBatches = [...allOrderedBatches, items].filter((batch) => batch.length > 0)
+    if (allBatches.length === 0) {
       setStatus('No rows to order.')
       return null
     }
 
-    const orderedIds = items.map((item) => item.row.scenario_id)
-    setStatus('Running model re-fit...')
+    const orderedIdBatches = allBatches.map((batch) =>
+      batch.map((item) => item.row.scenario_id)
+    )
+
+    const totalItems = orderedIdBatches.reduce((sum, batch) => sum + batch.length, 0)
+    setStatus(
+      `Running model re-fit on ${allBatches.length} batches (${totalItems} rows total)...`
+    )
     try {
       const response = await fetch(`${API_URL}/refit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ordered_ids: orderedIds, case: selectedCase })
+        body: JSON.stringify({ ordered_ids: orderedIdBatches, case: selectedCase })
       })
       if (!response.ok) {
         throw new Error(`API error: ${response.status} ${response.statusText}`)
@@ -262,6 +274,7 @@ export default function App() {
         onBack={() => setPage('reorder')}
         onStartNew={() => {
           setResult(null)
+          setAllOrderedBatches([])
           fetchScenarios()
           setPage('reorder')
         }}
@@ -276,6 +289,7 @@ export default function App() {
         <h1>Order Hazard Scenarios</h1>
         <p className="hint">Showing 10 random scenarios from the dataset.</p>
         <p className="statusText">{status}</p>
+        <p className="hint">Saved batches: {allOrderedBatches.length}</p>
         <div className="buttonRow">
           <label className="caseSelect">
             Re-fit:{' '}
@@ -288,10 +302,10 @@ export default function App() {
             </select>
           </label>
           <button className="refreshButton" type="button" onClick={handleGetNewData}>
-            Get New Data
+            Save Batch & Get New Data
           </button>
           <button className="nextButton" type="button" onClick={handleNextPage}>
-            Done (Re-fit Model)
+            Finalize & Re-fit Model
           </button>
         </div>
 
