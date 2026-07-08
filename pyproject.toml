@@ -1,0 +1,15 @@
+[project]
+name = "risk-refit"
+version = "0.1.0"
+description = "Re-fit the weights of the known risk calculation from expert orderings of scenario subsets."
+requires-python = ">=3.11"
+dependencies = [
+    "jax>=0.4.30",
+    "optax>=0.2.3",
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "pyarrow>=16.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["refit*"]
